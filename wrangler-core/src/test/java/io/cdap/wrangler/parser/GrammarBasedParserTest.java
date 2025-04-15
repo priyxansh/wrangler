@@ -14,65 +14,107 @@
  *  the License.
  */
 
-package io.cdap.wrangler.parser;
+ package io.cdap.wrangler.parser;
 
-import io.cdap.wrangler.TestingRig;
-import io.cdap.wrangler.api.CompileStatus;
-import io.cdap.wrangler.api.Compiler;
-import io.cdap.wrangler.api.Directive;
-import io.cdap.wrangler.api.RecipeParser;
-import org.junit.Assert;
-import org.junit.Test;
-
-import java.util.List;
-
-/**
- * Tests {@link GrammarBasedParser}
- */
-public class GrammarBasedParserTest {
-
-  @Test
-  public void testBasic() throws Exception {
-    String[] recipe = new String[] {
-      "#pragma version 2.0;",
-      "rename :col1 :col2",
-      "parse-as-csv :body ',' true;",
-      "#pragma load-directives text-reverse, text-exchange;",
-      "${macro} ${macro_2}",
-      "${macro_${test}}"
-    };
-
-    RecipeParser parser = TestingRig.parse(recipe);
-    List<Directive> directives = parser.parse();
-    Assert.assertEquals(2, directives.size());
-  }
-
-  @Test
-  public void testLoadableDirectives() throws Exception {
-    String[] recipe = new String[] {
-      "#pragma version 2.0;",
-      "#pragma load-directives text-reverse, text-exchange;",
-      "rename col1 col2",
-      "parse-as-csv body , true",
-      "text-reverse :body;",
-      "test prop: { a='b', b=1.0, c=true};",
-      "#pragma load-directives test-change,text-exchange, test1,test2,test3,test4;"
-    };
-
-    Compiler compiler = new RecipeCompiler();
-    CompileStatus status = compiler.compile(new MigrateToV2(recipe).migrate());
-    Assert.assertEquals(7, status.getSymbols().getLoadableDirectives().size());
-  }
-
-  @Test
-  public void testCommentOnlyRecipe() throws Exception {
-    String[] recipe = new String[] {
-      "// test"
-    };
-
-    RecipeParser parser = TestingRig.parse(recipe);
-    List<Directive> directives = parser.parse();
-    Assert.assertEquals(0, directives.size());
-  }
-
-}
+ import io.cdap.directives.aggregates.AggregateStats;
+ import io.cdap.wrangler.TestingRig;
+ import io.cdap.wrangler.api.CompileStatus;
+ import io.cdap.wrangler.api.Compiler;
+ import io.cdap.wrangler.api.Directive;
+ import io.cdap.wrangler.api.RecipeException;
+ import io.cdap.wrangler.api.RecipeParser;
+ import org.junit.Assert;
+ import org.junit.Test;
+ 
+ import java.util.List;
+ 
+ /**
+  * Tests {@link GrammarBasedParser}
+  */
+ public class GrammarBasedParserTest {
+ 
+   @Test
+   public void testBasic() throws Exception {
+     String[] recipe = new String[] {
+         "#pragma version 2.0;",
+         "rename :col1 :col2",
+         "parse-as-csv :body ',' true;",
+         "#pragma load-directives text-reverse, text-exchange;",
+         "${macro} ${macro_2}",
+         "${macro_${test}}"
+     };
+ 
+     RecipeParser parser = TestingRig.parse(recipe);
+     List<Directive> directives = parser.parse();
+     Assert.assertEquals(2, directives.size());
+   }
+ 
+   @Test
+   public void testLoadableDirectives() throws Exception {
+     String[] recipe = new String[] {
+         "#pragma version 2.0;",
+         "#pragma load-directives text-reverse, text-exchange;",
+         "rename col1 col2",
+         "parse-as-csv body , true",
+         "text-reverse :body;",
+         "test prop: { a='b', b=1.0, c=true};",
+         "#pragma load-directives test-change,text-exchange, test1,test2,test3,test4;"
+     };
+ 
+     Compiler compiler = new RecipeCompiler();
+     CompileStatus status = compiler.compile(new MigrateToV2(recipe).migrate());
+     Assert.assertEquals(7, status.getSymbols().getLoadableDirectives().size());
+   }
+ 
+   @Test
+   public void testCommentOnlyRecipe() throws Exception {
+     String[] recipe = new String[] {
+         "// test"
+     };
+ 
+     RecipeParser parser = TestingRig.parse(recipe);
+     List<Directive> directives = parser.parse();
+     Assert.assertEquals(0, directives.size());
+   }
+ 
+   @Test
+   public void testValidAggregateStatsSyntax() throws Exception {
+     String[] recipe = new String[] {
+         "aggregate-stats :data_transfer_size :response_time total_size_mb total_time_sec"
+     };
+     RecipeParser parser = TestingRig.parse(recipe);
+     List<Directive> directives = parser.parse();
+     Assert.assertEquals(1, directives.size());
+     Assert.assertTrue(directives.get(0) instanceof AggregateStats);
+     // Note: Cannot easily verify argument initialization here without internal
+     // access
+   }
+ 
+   @Test(expected = RecipeException.class)
+   public void testInvalidAggregateStatsMissingColumns() throws Exception {
+     String[] recipe = new String[] {
+         "aggregate-stats :data_transfer_size total_size_mb total_time_sec" // Missing timeCol
+     };
+     RecipeParser parser = TestingRig.parse(recipe);
+     parser.parse(); // Should throw RecipeException due to parse failure
+   }
+ 
+   @Test(expected = RecipeException.class)
+   public void testInvalidAggregateStatsWrongType() throws Exception {
+     String[] recipe = new String[] {
+         "aggregate-stats data_transfer_size :response_time total_size_mb total_time_sec" // No : prefix
+     };
+     RecipeParser parser = TestingRig.parse(recipe);
+     parser.parse(); // Should throw RecipeException
+   }
+ 
+   @Test(expected = RecipeException.class)
+   public void testInvalidAggregateStatsInvalidUnit() throws Exception {
+     String[] recipe = new String[] {
+         "aggregate-stats :data_transfer_size :response_time total_size_mb total_time_sec invalid_unit"
+     };
+     RecipeParser parser = TestingRig.parse(recipe);
+     parser.parse(); // Should throw RecipeException due to extra argument
+   }
+ }
+ 
